@@ -1,0 +1,19 @@
+/3rd Party/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ibrary/
+/[Oo]bj/
+/[Tt]emp/
+
+
+*.csproj
+*.unityproj
+*.booproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.tmp
+*.pidb
+
+*.DS_Store

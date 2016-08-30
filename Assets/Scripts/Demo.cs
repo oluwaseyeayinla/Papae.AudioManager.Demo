@@ -8,7 +8,12 @@ public class Demo : MonoBehaviour
 	void Start ()
     {
         Debug.Log("Demo Start");
-        AudioManager.PlayBGMFromResource("Piano");
+        AudioManager.PlayBGMFromResource("Dead");
 	}
+
+    public void SetBGMToOne()
+    {
+        AudioManager.SetBGMVolume(1);
+    }
 
 }

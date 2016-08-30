@@ -13,6 +13,7 @@ public class AudioManager : MonoBehaviour
     {
         get
         {
+            // check if application is shutting down and audio manager is destroyed
             if (!alive)
             {
                 return null;
@@ -42,8 +43,10 @@ public class AudioManager : MonoBehaviour
         }
     }
 
+    // singleton placeholder
     private static AudioManager instance;
     private static GameObject gameObjectLock;
+    // application has started and is running
     private static bool alive = true;
 
     void OnApplicationExit()
@@ -67,173 +70,232 @@ public class AudioManager : MonoBehaviour
 
     #region Inspector Variables
     [SerializeField]
-    private AbstractBackgroundMusic backgroundMusic;
-    public static AbstractBackgroundMusic BGM
+    private BackgroundMusic backgroundMusic;
+    [SerializeField]
+    private List<RepeatSound> repeatingSounds = new List<RepeatSound>();
+    [SerializeField]
+    private List<AudioAsset> audioAssets = new List<AudioAsset>();
+    #endregion
+
+    #region Static Variables
+    public static AudioController Controller
+    {
+        get { return Instance.audioController; }
+    }
+
+    public static BackgroundMusic BGM
     {
         get { return Instance.backgroundMusic; }
     }
 
-    [SerializeField]
-    private List<AbstractLoopingSoundAsset> loopingSounds = new List<AbstractLoopingSoundAsset>();
-    public static List<AbstractLoopingSoundAsset> LoopingSounds
+    public static List<RepeatSound> RepeatSoundPool
     {
-        get { return Instance.loopingSounds; }
+        get { return Instance.repeatingSounds; }
     }
 
-    [SerializeField]
-    private List<AudioAsset> soundAssets = new List<AudioAsset>();
-    public static List<AudioAsset> SoundAssets
+    public static List<AudioAsset> AudioAssetPool
     {
-        get { return Instance.soundAssets; }
+        get { return Instance.audioAssets; }
     }
-    #endregion
-
-    public static AudioController Controller = null;
-    private bool initialised = false;
-    public static bool Initialised
-    {
-        get { return Instance.initialised; }
-    }
-
-
-    static AudioSource musicSource, crossfadeSource;
-    static float musicVol, sfxVol, crossfadeVol;
-    static float musicCap;
-    static bool sfxOn;
+   
+    
+    static AudioSource musicSource = null, crossfadeSource = null;
+    static float musicVol = 0, sfxVol = 0, crossfadeVol = 0, musicVolCap = 0;
+    static bool sfxOn = false, isActive = false;
 
     static readonly string BackgroundMusicVolKey = "BGMVol";
     static readonly string SoundEffectsVolKey = "SFXVol";
+    static readonly string BackgroundMusicStatusKey = "BGMStatus";
+    static readonly string SoundEffectsStatusKey = "SFXStatus";
     static readonly string DefaultSFXTag = "SFX";
 
-    void OnAwake()
-    {
-        Debug.Log("AudioManager On Awake");
-        Controller = GetComponent<AudioController>();
-        Initialise();
-    }
+    AudioController audioController = null;
+    #endregion
 
     void OnDestroy()
     {
+        Debug.Log("OnDestroy");
+        isActive = false;
         StopAllCoroutines();
         SavePreferences();
     }
 
-    void SetupMusicSource()
+    // initialise the audio manager
+    void OnAwake()
     {
+        Debug.Log("AudioManager On Awake");
+        audioController = GetComponent<AudioController>();
+        repeatingSounds.Clear();
+        SetupMusicAudioSource();
+    }
+
+    // initialises the audio source used by the background music
+    void SetupMusicAudioSource()
+    {
+        // find audio source component attached to audio manager
         musicSource = GetComponent<AudioSource>();
 
+        // if none exists, create one and attach to audiomanager
         if (musicSource == null)
         {
             musicSource = this.gameObject.AddComponent<AudioSource>() as AudioSource;
         }
 
-        // setup settings if one exists
-        musicSource.outputAudioMixerGroup = (Controller.MasterMixer != null) ? Controller.MasterMixer.outputAudioMixerGroup : null;
+        // set the default settings or properties to be used by the audio source
+        musicSource.outputAudioMixerGroup = Controller.MusicMixerGroup;
         musicSource.playOnAwake = false;
         musicSource.spatialBlend = 0;
         musicSource.rolloffMode = AudioRolloffMode.Logarithmic;
-        // we set the loop setting to true, the music will loop forever
         musicSource.loop = true;
-        // mute the sound if the if the music's been turned off
-        musicSource.mute = !Controller.MusicOn;
 
-        if (Controller.MasterMixer != null)
+        // is the background music source using a master mixer
+        /*
+        if (musicSource.outputAudioMixerGroup != null)
         {
-            Controller.MasterMixer.GetFloat(BackgroundMusicVolKey, out musicVol);
-            musicVol += 80f;
-            musicVol /= 100f;
+            Debug.Log(musicSource.outputAudioMixerGroup.name);
+            //Debug.Log(musicSource.outputAudioMixerGroup.audioMixer.name);
+
+            AudioMixerGroup[] groups = musicSource.outputAudioMixerGroup.audioMixer.FindMatchingGroups("Music");
+
+            for (int i = 0; i < groups.Length; i++)
+            {
+                Debug.Log(">>");
+                Debug.Log(groups[i].name);
+            }
         }
-        // set volume
-        musicSource.volume = (Controller.MasterMixer != null) ? musicVol : Controller.MusicVolume;
+        */
     }
 
-    void Initialise()
+    void Start()
     {
-        loopingSounds.Clear();
-        soundsInLoop.Clear();
-        LoadPreferences();
-        SetupMusicSource();
-        StartCoroutine(OnUpdate());
+        if (Controller != null && musicSource != null && !isActive)
+        {
+            OnStart();
+        }
     }
 
-    AudioSource AddMusicSource()
+    // this is here because the mixer group float can't be set awake
+    // spent amost 4 hours trying to figure out why... well didn't know until i ran some tests 
+    void OnStart()
+    {
+        audioController.MusicOn = LoadBGMStatus();
+        musicSource.mute = !audioController.MusicOn;
+        SetBGMVolume(LoadBGMVolume());
+
+        sfxOn = audioController.SoundFxOn = LoadSFxStatus();
+        SetSFxVolume(LoadSFxVolume());
+
+        SavePreferences();
+
+        if (!isActive)
+        {
+            StartCoroutine(OnUpdate());
+        }
+
+        isActive = true;
+    }
+
+    AudioSource AttachAudioSource()
     {
         AudioSource audioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
 
-        audioSource.outputAudioMixerGroup = (Controller.MasterMixer != null) ? Controller.MasterMixer.outputAudioMixerGroup : null;
+        audioSource.outputAudioMixerGroup = Controller.MusicMixerGroup;
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0;
         audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
-        // we set the loop setting to true, the music will loop forever
+        // we set the loop setting to true to loop the clip forever
         audioSource.loop = true;
-        // mute the sound if the if the music's been turned off
-        audioSource.mute = !Controller.MusicOn;
+        // we set the volume level of the audio source
+        audioSource.volume = LoadBGMVolume();
+        // we set the mute settings to the controller's settings
+        audioSource.mute = !audioController.MusicOn;
 
         return audioSource;
     }
 
-    IEnumerator OnUpdate()
+    void ManageRepeatingSounds()
     {
-        while (true)
+        for (int i = 0; i < repeatingSounds.Count; i++)
         {
-            ManageLoopingSounds();
+            RepeatSound rs = repeatingSounds[i];
+            rs.Duration -= Time.deltaTime;
+            repeatingSounds[i] = rs;
 
-            // updates value if music volume or music mute has been changed
-            if (musicVol != Controller.MusicVolume || Controller.MusicOn != !musicSource.mute)
+            if (repeatingSounds[i].Duration <= 0)
             {
-                musicVol = Controller.MusicVolume;
-                musicSource.volume = musicVol;
-                musicSource.mute = !Controller.MusicOn;
-
-                if (Controller.MasterMixer != null)
+                if (repeatingSounds[i].Callback != null)
                 {
-                    float mixerVol = -80f + (musicVol * 100f);
-                    Controller.MasterMixer.SetFloat(BackgroundMusicVolKey, mixerVol);
-                }
-            }
-
-            // updates value if sound effects volume or sound effects mute has been changed
-            if (sfxVol != Controller.SoundFxVolume || Controller.SoundFxOn != sfxOn)
-            {
-                sfxVol = Controller.SoundFxVolume;
-                AudioSource source;
-                //foreach (GameObject g in GameObject.FindGameObjectsWithTag(DefaultSFXTag))
-                foreach (SoundEFfectTag t in GameObject.FindObjectsOfType<SoundEFfectTag>())
-                {
-                    //source = g.GetComponent<AudioSource>();
-                    source = t.GetComponent<AudioSource>();
-                    source.volume = sfxVol;
-                    source.mute = !Controller.SoundFxOn;
+                    repeatingSounds[i].Callback.Invoke();
                 }
 
-                if (Controller.MasterMixer != null)
-                {
-                    float mixerVol = -80f + (sfxVol * 100f);
-                    Controller.MasterMixer.SetFloat(SoundEffectsVolKey, mixerVol);
-                }
+                // destroy the host after
+                Destroy(repeatingSounds[i].Source.gameObject);
 
-                sfxOn = Controller.SoundFxOn;
+                repeatingSounds.RemoveAt(i);
+                repeatingSounds.Sort();
+                break;
             }
+        }
+    }
 
-            // update the music transition for cross fade in queue
-            if (crossfadeSource != null)
+    // has the music volume or the music mute status been changed
+    bool IsMusicAltered()
+    {
+        bool flag = audioController.MusicOn != !musicSource.mute || musicVol != audioController.MusicVolume;
+
+        if (audioController.MusicMixerGroup != null)
+        {
+            float vol;
+            // get the music volume from the master mixer 
+            audioController.MusicMixerGroup.audioMixer.GetFloat(BackgroundMusicVolKey, out vol);
+            // make it a range from 0 to 1 to suit the music source volume and audiomanager volume
+            vol += 80f;
+            vol /= 100f;
+
+            return flag || musicVol != vol;
+        }
+
+        return flag;
+    }
+
+    // has the music volume or the music mute status been changed
+    bool IsSoundFxAltered()
+    {
+        bool flag = audioController.SoundFxOn != sfxOn || sfxVol != audioController.SoundFxVolume;
+
+        if (audioController.SoundFxMixerGroup != null)
+        {
+            float vol;
+            // get the music volume from the master mixer 
+            audioController.SoundFxMixerGroup.audioMixer.GetFloat(SoundEffectsVolKey, out vol);
+            // make it a range from 0 to 1 to suit the music source volume and audiomanager volume
+            vol += 80f;
+            vol /= 100f;
+
+            return flag || sfxVol != vol;
+        }
+
+        return flag;
+    }
+
+    void CrossFadeBackgroundMusic()
+    {
+        if (backgroundMusic.Transition == MusicTransition.CrossFade)
+        {
+            if (musicSource.clip.name != backgroundMusic.NextClip.name)
             {
-                CrossFadeBackgroundMusic();
+                audioController.MusicVolume -= .05f;
 
-                yield return new WaitForSeconds(.20f);
-            }
-            else
-            {
-                // update the music transition for fade in and fade out queue
-                if (backgroundMusic.NextClip != null)
+                crossfadeVol = Mathf.Clamp01(musicVolCap - musicVol);
+                crossfadeSource.volume = crossfadeVol;
+                crossfadeSource.mute = musicSource.mute;
+
+                if (audioController.MusicVolume <= 0.00f)
                 {
-                    FadeOutFadeInBackgroundMusic();
-
-                    yield return new WaitForSeconds(.20f);
+                    SetBGMVolume(musicVolCap);
+                    ChangeBackgroundMusic(backgroundMusic.NextClip, crossfadeSource.time);
                 }
             }
-
-            yield return new WaitForEndOfFrame();
         }
     }
 
@@ -243,66 +305,100 @@ public class AudioManager : MonoBehaviour
         {
             if (musicSource.clip.name == backgroundMusic.NextClip.name)
             {
-                Controller.MusicVolume += .05f;
+                audioController.MusicVolume += .05f;
 
-                if (Controller.MusicVolume >= musicCap)
+                if (audioController.MusicVolume >= musicVolCap)
                 {
-                    SetBGMVolume(musicCap);
+                    SetBGMVolume(musicVolCap);
                     ChangeBackgroundMusic(backgroundMusic.NextClip, musicSource.time);
                 }
             }
             else
             {
-                Controller.MusicVolume -= .05f;
+                audioController.MusicVolume -= .05f;
 
-                if (Controller.MusicVolume <= 0.00f)
+                if (audioController.MusicVolume <= 0.00f)
                 {
-                    Controller.MusicVolume = 0;
+                    audioController.MusicVolume = 0;
                     PlayMusic(ref musicSource, backgroundMusic.NextClip, 0);
                 }
             }
         }
     }
 
-    void CrossFadeBackgroundMusic()
+    IEnumerator OnUpdate()
     {
-        if (backgroundMusic.Transition == MusicTransition.CrossFade)
+        while (true)
         {
-            if (musicSource.clip.name != backgroundMusic.NextClip.name)
+            ManageRepeatingSounds();
+
+            if (isActive)
             {
-                Controller.MusicVolume -= .05f;
-
-                crossfadeVol = Mathf.Clamp01(musicCap - musicVol);
-                crossfadeSource.volume = crossfadeVol;
-                crossfadeSource.mute = musicSource.mute;
-
-                if (Controller.MusicVolume <= 0.00f)
+                // updates value if music volume or music mute status has been changed
+                if (IsMusicAltered())
                 {
-                    SetBGMVolume(musicCap);
-                    ChangeBackgroundMusic(backgroundMusic.NextClip, crossfadeSource.time);
+                    musicSource.mute = !audioController.MusicOn;
+
+                    if (musicVol != audioController.MusicVolume)
+                    {
+                        musicVol = audioController.MusicVolume;
+                    }
+                    else if (audioController.MusicMixerGroup != null)
+                    {
+                        float vol;
+                        audioController.MusicMixerGroup.audioMixer.GetFloat(BackgroundMusicVolKey, out vol);
+                        vol += 80f;
+                        vol /= 100f;
+                        musicVol = vol;
+                    }
+
+                    SetBGMVolume(musicVol);
+                }
+
+                // updates value if sound effects volume or sound effects mute has been changed
+                if (IsSoundFxAltered())
+                {
+                    sfxOn = audioController.SoundFxOn;
+
+                    if (sfxVol != audioController.SoundFxVolume)
+                    {
+                        sfxVol = audioController.SoundFxVolume;
+                    }
+                    else if (audioController.MusicMixerGroup != null)
+                    {
+                        float vol;
+                        audioController.SoundFxMixerGroup.audioMixer.GetFloat(SoundEffectsVolKey, out vol);
+                        vol += 80f;
+                        vol /= 100f;
+                        sfxVol = vol;
+                    }
+
+                    SetSFxVolume(sfxVol);
+                }
+
+                // update the music transition for cross fade in queue
+                if (crossfadeSource != null)
+                {
+                    CrossFadeBackgroundMusic();
+
+                    yield return new WaitForSeconds(.20f);
+                }
+                else
+                {
+                    // update the music transition for fade in and fade out queue
+                    if (backgroundMusic.NextClip != null)
+                    {
+                        FadeOutFadeInBackgroundMusic();
+
+                        yield return new WaitForSeconds(.20f);
+                    }
                 }
             }
+
+            yield return new WaitForEndOfFrame();
         }
     }
 
-    void ManageLoopingSounds()
-    {
-        for (int i = 0; i < loopingSounds.Count; i++)
-        {
-            AbstractLoopingSoundAsset lpa = loopingSounds[i];
-            lpa.Duration -= Time.deltaTime;
-            loopingSounds[i] = lpa;
-
-            if (loopingSounds[i].Duration <= 0)
-            {
-                Destroy(soundsInLoop[loopingSounds[i].Name]);
-                soundsInLoop.Remove(loopingSounds[i].Name);
-                LoopingSounds.RemoveAt(i);
-                LoopingSounds.Sort();
-                break;
-            }
-        }
-    }
 
     #region Static Functions
     /// <summary>
@@ -337,8 +433,9 @@ public class AudioManager : MonoBehaviour
     {
         if (audio_source == null)
         {
-            Controller = Instance.GetComponent<AudioController>();
-            audio_source = Instance.AddMusicSource();
+            Instance.audioController = Instance.GetComponent<AudioController>();
+            audio_source = Instance.AttachAudioSource();
+            Instance.OnStart();
         }
 
         audio_source.clip = music_clip;
@@ -390,7 +487,7 @@ public class AudioManager : MonoBehaviour
             // stop!!! has not finished fading the background music
             if (Instance.backgroundMusic.NextClip != null) return;
 
-            musicCap = Controller.MusicVolume;
+            musicVolCap = Controller.MusicVolume;
             Instance.backgroundMusic.NextClip = music_clip;
 
             if (Instance.backgroundMusic.Transition == MusicTransition.CrossFade)
@@ -398,8 +495,9 @@ public class AudioManager : MonoBehaviour
                 // stop!!! has not finished crossfading the background music
                 if (crossfadeSource != null) return;
 
-                crossfadeSource = Instance.AddMusicSource();
-                crossfadeSource.volume = crossfadeVol = Mathf.Clamp01(musicCap - musicVol);
+                crossfadeSource = Instance.AttachAudioSource();
+                crossfadeSource.outputAudioMixerGroup = null;
+                crossfadeSource.volume = crossfadeVol = Mathf.Clamp01(musicVolCap - musicVol);
                 PlayMusic(ref crossfadeSource, Instance.backgroundMusic.NextClip, 0);
             }
         }
@@ -423,7 +521,7 @@ public class AudioManager : MonoBehaviour
     /// <param name="transition_mode">Mode of music Transition.</param>
     public static void PlayBGMFromAsset(string name, MusicTransition transition_mode)
     {
-        AudioClip clip = GetClipFromAsset(name);
+        AudioClip clip = GetClipFromAssetList(name);
 
         if (clip == null)
         {
@@ -452,23 +550,15 @@ public class AudioManager : MonoBehaviour
     /// <param name="transition_mode">Mode of music Transition.</param>
     public static void PlayBGMFromResource(string name, MusicTransition transition_mode)
     {
-        AudioClip musicCLip = Resources.Load(name) as AudioClip;
-        if (musicCLip == null)
+        AudioClip musicClip = Resources.Load(name) as AudioClip;
+        if (musicClip == null)
         {
-            Debug.LogError(string.Format("AudioClip '{0}' not found at location {1}", name, Application.persistentDataPath));
+            Debug.LogError(string.Format("AudioClip '{0}' not found at location {1}", name, System.IO.Path.Combine(Application.dataPath, "/Resources/")));
         }
 
-        PlayBGM(musicCLip, transition_mode);
+        PlayBGM(musicClip, transition_mode);
     }
 
-    /// <summary>
-    /// Loads an AudioClip from the Resources folder
-    /// </summary>
-    /// <param name="name">Name of your audio clip.</param>
-    public static AudioClip LoadClipFromResources(string name)
-    {
-        return Resources.Load(name) as AudioClip;
-    }
 
     /// <summary>
     /// Stops the playing background music
@@ -482,50 +572,152 @@ public class AudioManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Pauses the playing background music
+    /// </summary>
+    public static void PauseBGM()
+    {
+        if (musicSource.isPlaying)
+        {
+            musicSource.Pause();
+        }
+    }
+
+    /// <summary>
+    /// Resumes the playing background music
+    /// </summary>
+    public static void ResumeBGM()
+    {
+        if (!musicSource.isPlaying)
+        {
+            musicSource.UnPause();
+        }
+    }
+
+
+    /// <summary>
     /// Inner function used to play all resulting sound effects.
     /// Sets-up some particular properties for the sound effect.
     /// </summary>
     /// <param name="sound_clip">Clip to play.</param>
     /// <param name="repeat">Loop or repeat the clip.</param>
     /// <param name="location">Location of the audio clip.</param>
-    static GameObject SetupSoundEffect(AudioClip sound_clip, int repeat, Vector3 location)
+    static GameObject SetupSoundEffect(AudioClip sound_clip, bool loop, Vector2 location)
     {
-        // we create a temporary game object to host our audio source
+        // create a temporary game object to host our audio source
         GameObject host = new GameObject("TempAudio");
-        // we set the temp audio's position
+        
+        // set the temp audio's position
         host.transform.position = location;
-        // we specity a tag for future use
+
+        // specity a tag for future use
         //host.gameObject.tag = DefaultSFXTag;
         host.AddComponent<SoundEFfectTag>();
-        // we add an audio source to that host
+
+        // add an audio source to that host
         AudioSource audioSource = host.AddComponent<AudioSource>() as AudioSource;
-        audioSource.outputAudioMixerGroup = (Controller.MasterMixer != null) ? Controller.MasterMixer.outputAudioMixerGroup : null;
-        // we set that audio source clip to the one in paramaters
+
+        audioSource.outputAudioMixerGroup = Controller.SoundFxMixerGroup;
+        // set that audio source clip to the one in paramaters
         audioSource.clip = sound_clip;
-
-        // we set the mute value
+        // set the mute value
         audioSource.mute = !Controller.SoundFxOn;
-        // we set whether to loop the sound
-        audioSource.loop = (repeat > 1);
-
-
-        // we set the audio source volume to the one in parameters
+        // set whether to loop the sound
+        audioSource.loop = loop;
+        // set the audio source volume to the one in parameters
         audioSource.volume = Controller.SoundFxVolume;
 
-        // we return the gameobject host reference
         return host;
     }
 
+
     /// <summary>
-    /// Plays a sound effect and calls the specified callback function after the sound is over.
+    /// Returns the index of a repeating sound in pool if one exists.
+    /// </summary>
+    /// <returns>Index of repeating sound or -1 is none exists</returns>
+    /// <param name="name">The name of the repeating sound.</param>
+    public static int GetRepeatingSoundIndex(string name)
+    {
+        int index = 0;
+        while (index < Instance.repeatingSounds.Count)
+        {
+            if (Instance.repeatingSounds[index].Name == name)
+            {
+                return index;
+            }
+
+            index++;
+        }
+
+        return -1;
+    }
+
+
+    /// <summary>
+    /// Plays a sound effect for a duration of time and calls the specified callback function after the time is over.
     /// </summary>
     /// <returns>An audiosource</returns>
     /// <param name="clip">The sound clip you want to play.</param>
-    /// <param name="repeat">How many times in successions you want the clip to play.</param>
+    /// <param name="duration">The length in time the clip should play.</param>
     /// <param name="location">Location of the clip.</param>
-    public static AudioSource PlaySFX(AudioClip clip, int repeat, Vector3 location)
+    /// <param name="callback">Action callback to be invoked after the sound has finished.</param>
+    public static AudioSource PlaySFX(AudioClip clip, float duration, Vector2 location, Action callback)
     {
-        return PlaySFX(clip, repeat, location, null);
+        if (GetRepeatingSoundIndex(clip.name) >= 0)
+        {
+            // simply reset the duration if it exists
+            int index = GetRepeatingSoundIndex(clip.name);
+            RepeatSound rs = Instance.repeatingSounds[index];
+            rs.Duration = duration;
+            Instance.repeatingSounds[index] = rs;
+            return Instance.repeatingSounds[index].Source;
+        }
+
+        if (duration <= clip.length)
+        {
+            return PlayOneShot(clip, callback);
+        }
+
+        GameObject host = SetupSoundEffect(clip, duration > clip.length, Vector2.zero);
+        
+        // get the Audiosource component attached to the host
+        AudioSource source = host.GetComponent<AudioSource>();
+        // create a new repeat sound
+        RepeatSound repeatSound;
+        repeatSound.Name = clip.name;
+        repeatSound.Source = source;
+        repeatSound.Duration = duration;
+        repeatSound.Callback = callback;
+        // add it to the list
+        Instance.repeatingSounds.Add(repeatSound);
+        
+        // start playing the sound
+        source.Play();
+
+        return source;
+    }
+
+    /// <summary>
+    /// Plays a sound effect for a duration of time.
+    /// </summary>
+    /// <returns>An audiosource</returns>
+    /// <param name="clip">The sound clip you want to play.</param>
+    /// <param name="duration">The length in time the clip should play.</param>
+    /// <param name="location">Location of the clip.</param>
+    public static AudioSource PlaySFX(AudioClip clip, float duration, Vector2 location)
+    {
+        return PlaySFX(clip, duration, location, null);
+    }
+
+
+    /// <summary>
+    /// Plays a sound effect for a duration of time.
+    /// </summary>
+    /// <returns>An audiosource</returns>
+    /// <param name="clip">The sound clip you want to play.</param>
+    /// <param name="duration">The length in time the clip should play.</param>
+    public static AudioSource PlaySFX(AudioClip clip, float duration)
+    {
+        return PlaySFX(clip, duration, Vector2.zero, null);
     }
 
 
@@ -537,65 +729,73 @@ public class AudioManager : MonoBehaviour
     /// <param name="repeat">How many times in successions you want the clip to play.</param>
     /// <param name="location">Location of the clip.</param>
     /// <param name="callback">Action callback to be invoked after the sound has finished.</param>
-    public static AudioSource PlaySFX(AudioClip clip, int repeat, Vector3 location, Action callback)
+    public static AudioSource PlaySFX(AudioClip clip, int repeat, Vector2 location, Action callback)
     {
-        GameObject host = SetupSoundEffect(clip, repeat, Vector3.zero);
-        // get the Audiosource component attached to the host
-        AudioSource source = host.GetComponent<AudioSource>();
-        // we start playing the sound
-        source.Play();
-        // we destroy the host after the clip has played
-        Destroy(host, clip.length * repeat);
-
-        if (callback != null)
-        {
-            Instance.StartCoroutine(Instance.InvokeFunctionAfter(callback, clip.length * repeat));
-        }
-
-        return source;
+        return PlaySFX(clip, clip.length * repeat, location, callback);
     }
 
-    /// <summary>
-    /// Plays a sound effect from the Resources folder.
-    /// </summary>
-    /// <returns>An AudioSource</returns>
-    /// <param name="name">Clip name from the ResourcePath.SoundFX directory.</param>
-    /// <param name="repeat">How many times in successions you want the sound to play.</param>
-    /// <param name="location">The location of the sound.</param>
-    public static AudioSource PlaySFXFromResource(string name, int repeat, Vector3 location)
-    {
-        return PlaySFXFromResource(name, repeat, location, null);
-    }
 
     /// <summary>
-    /// Plays a sound effect from the Resources folder and calls the specified callback function after the sound is over.
+    /// Plays a sound effect and calls the specified callback function after the sound is over.
     /// </summary>
-    /// <returns>An AudioSource</returns>
-    /// <param name="name">Clip name from the resource path directory.</param>
-    /// <param name="repeat">How many times in successions you want the sound to play.</param>
-    /// <param name="location">The location of the sound.</param>
-    /// <param name="callback">Action callback to be invoked after playing sound.</param>
-    public static AudioSource PlaySFXFromResource(string name, int repeat, Vector3 location, Action callback)
-    {
-        AudioClip clip = Resources.Load(name) as AudioClip;
-        if (clip == null)
-        {
-            Debug.LogError(string.Format("AudioClip '{0}' not found at location {1}", name, Application.persistentDataPath));
-            return null;
-        }
-
-        return PlaySFX(clip, repeat, location, callback);
-    }
-
-    /// <summary>
-    /// Plays a sound effect once
-    /// </summary>
-    /// <returns>An AudioSource</returns>
+    /// <returns>An audiosource</returns>
     /// <param name="clip">The sound clip you want to play.</param>
-    public static AudioSource PlayOneShot(AudioClip clip)
+    /// <param name="repeat">How many times in successions you want the clip to play.</param>
+    /// <param name="location">Location of the clip.</param>
+    public static AudioSource PlaySFX(AudioClip clip, int repeat, Vector2 location)
     {
-        return PlayOneShot(clip, null);
+        return PlaySFX(clip, clip.length * repeat, location, null);
     }
+
+
+    /// <summary>
+    /// Plays a sound effect and calls the specified callback function after the sound is over.
+    /// </summary>
+    /// <returns>An audiosource</returns>
+    /// <param name="clip">The sound clip you want to play.</param>
+    /// <param name="repeat">How many times in successions you want the clip to play.</param>
+    public static AudioSource PlaySFX(AudioClip clip, int repeat)
+    {
+        return PlaySFX(clip, clip.length * repeat, Vector2.zero, null);
+    }
+
+
+    /// <summary>
+    /// Pauses all the sound effects in the game
+    /// </summary>
+    public static void PauseAllSFX()
+    {
+        AudioSource source;
+        foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
+        {
+            source = t.GetComponent<AudioSource>();
+            if(source.isPlaying) source.Pause();
+        }
+    }
+
+    /// <summary>
+    /// Resumes all the sound effect in the game
+    /// </summary>
+    /// <param name="volume">New volume of all sound effects.</param>
+    public static void ResumeAllSFX()
+    {
+        AudioSource source;
+        foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
+        {
+            source = t.GetComponent<AudioSource>();
+            if(!source.isPlaying) source.UnPause();
+        }
+    }
+
+
+    // Inner function used to callback a looping or repating clip if a callback function was passed as a parameter
+    IEnumerator InvokeFunctionAfter(Action callback, float time)
+    {
+        yield return new WaitForSeconds(time);
+
+        callback.Invoke();
+    }
+
 
     /// <summary>
     /// Plays a sound effect once
@@ -605,7 +805,7 @@ public class AudioManager : MonoBehaviour
     /// <param name="callback">Action callback to be invoked after clip has finished playing.</param>
     public static AudioSource PlayOneShot(AudioClip clip, Action callback)
     {
-        GameObject host = SetupSoundEffect(clip, 1, Vector3.zero);
+        GameObject host = SetupSoundEffect(clip, false, Vector2.zero);
 
         AudioSource source = host.GetComponent<AudioSource>();
         source.spatialBlend = 0;
@@ -624,15 +824,34 @@ public class AudioManager : MonoBehaviour
         return source;
     }
 
+
     /// <summary>
-    /// Plays a sound effect once from the Resources folder.
+    /// Plays a sound effect once
     /// </summary>
-    /// <returns>An Audiosource</returns>
-    /// <param name="name">Clip name from the ResourcePath.SoundFX directory.</param>
-    public static AudioSource PlayOneShotFromResource(string name)
+    /// <returns>An AudioSource</returns>
+    /// <param name="clip">The sound clip you want to play.</param>
+    public static AudioSource PlayOneShot(AudioClip clip)
     {
-        return PlayOneShotFromResource(name, null);
+        return PlayOneShot(clip, null);
     }
+
+    /// <summary>
+    /// Loads an AudioClip from the Resources folder
+    /// </summary>
+    /// <param name="name">Name of your audio clip.</param>
+    public static AudioClip LoadClipFromResource(string name)
+    {
+        AudioClip clip = Resources.Load(name) as AudioClip;
+        if (clip == null)
+        {
+            Debug.LogException(new UnityException(string.Format("AudioClip '{0}' not found at location {1}", 
+                                                name, System.IO.Path.Combine(Application.dataPath, "/Resources/"))));
+            return null;
+        }
+
+        return clip;
+    }
+
 
     /// <summary>
     /// Plays a sound effect once from the specified resouce path.
@@ -646,27 +865,31 @@ public class AudioManager : MonoBehaviour
         AudioClip clip = Resources.Load(name) as AudioClip;
         if (clip == null)
         {
-            Debug.LogError(string.Format("AudioClip '{0}' not found at location {1}", name, Application.persistentDataPath));
+            Debug.LogError(string.Format("AudioClip '{0}' not found at location {1}", name, System.IO.Path.Combine(Application.dataPath, "/Resources/")));
             return null;
         }
 
         return PlayOneShot(clip, callback);
     }
 
-    // Inner function used to callback a looping or repating clip if a callback function was passed as a parameter
-    IEnumerator InvokeFunctionAfter(Action callback, float time)
-    {
-        yield return new WaitForSeconds(time);
 
-        callback.Invoke();
+    /// <summary>
+    /// Plays a sound effect once from the Resources folder.
+    /// </summary>
+    /// <returns>An Audiosource</returns>
+    /// <param name="name">Clip name from the ResourcePath.SoundFX directory.</param>
+    public static AudioSource PlayOneShotFromResource(string name)
+    {
+        return PlayOneShotFromResource(name, null);
     }
 
+    
     /// <summary>
     /// Toggles the Background Music mute.
     /// </summary>
     public static void ToggleBGMMute()
     {
-        Controller.MusicOn = !Controller.MusicOn;
+        Instance.audioController.MusicOn = !Controller.MusicOn;
         musicSource.mute = !Controller.MusicOn;
     }
 
@@ -675,7 +898,7 @@ public class AudioManager : MonoBehaviour
     /// </summary>
     public static void ToggleSFXMute()
     {
-        Controller.SoundFxOn = !Controller.SoundFxOn;
+        Instance.audioController.SoundFxOn = !Controller.SoundFxOn;
 
         AudioSource source;
         //foreach (GameObject g in GameObject.FindGameObjectsWithTag(DefaultSFXTag))
@@ -705,23 +928,29 @@ public class AudioManager : MonoBehaviour
     /// <param name="volume">New volume of the background music.</param>
     public static void SetBGMVolume(float volume)
     {
-        if (musicSource == null)
-        {
-            Controller = Instance.GetComponent<AudioController>();
-            musicSource = Instance.AddMusicSource();
-        }
+        if (Controller == null) return;
 
+        //if (musicSource == null)
+        //{
+            //Instance.audioController = Instance.GetComponent<AudioController>();
+            //musicSource = Instance.GetComponent<AudioSource>() == null ? Instance.AttachAudioSource() : Instance.GetComponent<AudioSource>();
+            //Instance.OnStart();
+        //}
+
+        // make it a range from 0 to 1 to suit the music source volume and audiomanager volume
         volume = Mathf.Clamp01(volume);
-        musicVol = Controller.MusicVolume = volume;
-        musicSource.volume = musicVol;
-        SaveBGMVolume();
-
-        if (Controller.MasterMixer != null)
+        // assign vol to all music volume variables
+        musicSource.volume = musicVol = Controller.MusicVolume = volume;
+        // is the controller using a master mixer
+        if (Controller.MusicMixerGroup != null)
         {
-            // Always [-80db ... 20db]
+            // get the equivalent mixer volume, always [-80db ... 20db]
             float mixerVol = -80f + (volume * 100f);
-            Controller.MasterMixer.SetFloat(BackgroundMusicVolKey, mixerVol);
+            // set the volume of the background music group
+            Controller.MusicMixerGroup.audioMixer.SetFloat(BackgroundMusicVolKey, mixerVol);
         }
+
+        SaveBGMPreferences();
     }
 
     /// <summary>
@@ -730,36 +959,43 @@ public class AudioManager : MonoBehaviour
     /// <param name="volume">New volume of all sound effects.</param>
     public static void SetSFxVolume(float volume)
     {
+        if (Controller == null) return;
+
         volume = Mathf.Clamp01(volume);
         sfxVol = Controller.SoundFxVolume = volume;
+
         AudioSource source;
-        //foreach (GameObject g in GameObject.FindGameObjectsWithTag(DefaultSFXTag))
-        foreach (SoundEFfectTag t in GameObject.FindObjectsOfType<SoundEFfectTag>())
+        foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
         {
-            //source = g.GetComponent<AudioSource>();
             source = t.GetComponent<AudioSource>();
             source.volume = sfxVol;
+            source.mute = !Controller.SoundFxOn;
         }
-        SaveSFXVolume();
-
-        if (Controller.MasterMixer != null)
+        
+        // is the controller using a master mixer
+        if (Controller.SoundFxMixerGroup != null)
         {
-            // Always [-80db ... 20db]
+            // get the equivalent mixer volume, always [-80db ... 20db]
             float mixerVol = -80f + (volume * 100f);
-            Controller.MasterMixer.SetFloat(SoundEffectsVolKey, mixerVol);
+            // set the volume of the sound effect group
+            Controller.SoundFxMixerGroup.audioMixer.SetFloat(SoundEffectsVolKey, mixerVol);
         }
+
+        SaveSFXPreferences();
     }
 
     // Self explanatory
-    static void SaveSFXVolume()
+    static void SaveSFXPreferences()
     {
+        PlayerPrefs.SetInt(SoundEffectsStatusKey, Controller.SoundFxOn ? 1 : 0);
         PlayerPrefs.SetFloat(SoundEffectsVolKey, Controller.SoundFxVolume);
         PlayerPrefs.Save();
     }
 
     // Self explanatory
-    static void SaveBGMVolume()
+    static void SaveBGMPreferences()
     {
+        PlayerPrefs.SetInt(BackgroundMusicStatusKey, Controller.MusicOn ? 1 : 0);
         PlayerPrefs.SetFloat(BackgroundMusicVolKey, Controller.MusicVolume);
         PlayerPrefs.Save();
     }
@@ -776,20 +1012,31 @@ public class AudioManager : MonoBehaviour
         return (PlayerPrefs.HasKey(SoundEffectsVolKey)) ? PlayerPrefs.GetFloat(SoundEffectsVolKey) : AudioController.DefaultSFxVol;
     }
 
+    static bool ToBool(int integer)
+    {
+        return integer == 0 ? false : true;
+    }
+
+    // Self explanatory
+    static bool LoadBGMStatus()
+    {
+        return (PlayerPrefs.HasKey(BackgroundMusicStatusKey)) ? ToBool(PlayerPrefs.GetInt(BackgroundMusicStatusKey)) : Controller.MusicOn;
+    }
+
+    // Self explanatory
+    static bool LoadSFxStatus()
+    {
+        return (PlayerPrefs.HasKey(SoundEffectsStatusKey)) ? ToBool(PlayerPrefs.GetInt(SoundEffectsStatusKey)) : Controller.SoundFxOn;
+    }
+
     // Self explanatory
     public static void ClearPreferences()
     {
         PlayerPrefs.DeleteKey(BackgroundMusicVolKey);
         PlayerPrefs.DeleteKey(SoundEffectsVolKey);
+        PlayerPrefs.DeleteKey(BackgroundMusicStatusKey);
+        PlayerPrefs.DeleteKey(SoundEffectsStatusKey);
         PlayerPrefs.Save();
-    }
-
-    // Self explanatory
-    public static void LoadPreferences()
-    {
-        musicVol = Controller.MusicVolume = LoadBGMVolume();
-        sfxVol = Controller.SoundFxVolume = LoadSFxVolume();
-        sfxOn = Controller.SoundFxOn;
     }
 
     // Self explanatory
@@ -797,79 +1044,39 @@ public class AudioManager : MonoBehaviour
     {
         PlayerPrefs.SetFloat(SoundEffectsVolKey, Controller.SoundFxVolume);
         PlayerPrefs.SetFloat(BackgroundMusicVolKey, Controller.MusicVolume);
+        PlayerPrefs.SetInt(SoundEffectsStatusKey, Controller.SoundFxOn ? 1 : 0);
+        PlayerPrefs.SetInt(BackgroundMusicStatusKey, Controller.MusicOn ? 1 : 0);
         PlayerPrefs.Save();
-    }
-
-    Dictionary<string, GameObject> soundsInLoop = new Dictionary<string, GameObject>();
-    // Looping a particular list of sounds for a particular time 
-    // Used for powerups that have timers that can be reset when another of the same type is collected
-    public static void LoopSound(AudioClip clip, Vector3 location, float duration)
-    {
-        AbstractLoopingSoundAsset loopSound = new AbstractLoopingSoundAsset("", null, 0);
-        loopSound.Name = clip.name;
-        loopSound.Clip = clip;
-        loopSound.Duration = duration;
-
-        if (Instance.soundsInLoop.ContainsKey(clip.name))
-        {
-            // simply reset the duration if it exists
-            int index = GetLoopingSoundIndex(clip.name);
-            Instance.loopingSounds[index] = loopSound;
-        }
-        else
-        {
-            // create a new looping sound and add it to the library
-            LoopingSounds.Add(loopSound);
-
-            int repeat = (int)(duration / clip.length);
-            GameObject host = SetupSoundEffect(clip, repeat, Vector3.zero);
-            // get the Audiosource component attached to the host
-            AudioSource source = host.GetComponent<AudioSource>();
-            // we start playing the sound
-            source.Play();
-
-            Instance.soundsInLoop.Add(loopSound.Name, host);
-        }
-    }
-
-    static int GetLoopingSoundIndex(string name)
-    {
-        int index = 0;
-        while (index < LoopingSounds.Count)
-        {
-            if (LoopingSounds[index].Name == name)
-            {
-                return index;
-            }
-
-            index++;
-        }
-
-        return -1;
     }
 
 
     public static void EmptyAssetList()
     {
-        SoundAssets.Clear();
+        AudioAssetPool.Clear();
     }
 
-    public static void AddToAssetList(string path, string name)
+    public static void AddToAssetList(string audio_path)
     {
-        AudioClip clip = Resources.Load<AudioClip>(path + name);
+        AudioClip clip = Resources.Load<AudioClip>(audio_path);
+
+        if (clip == null)
+        {
+            Debug.LogError("Could not find specified Clip at path '" + audio_path + "'");
+            return;
+        }
 
         AudioAsset sndAsset;
         sndAsset.Name = clip.name;
         sndAsset.Clip = clip;
 
-        SoundAssets.Add(sndAsset);
+        AudioAssetPool.Add(sndAsset);
     }
 
-    public static void LoadSoundsIntoAssets(string path)
+    public static void LoadSoundsIntoAssetList(string audio_path)
     {
-        AudioClip[] clips = Resources.LoadAll<AudioClip>(path);
+        AudioClip[] clips = Resources.LoadAll<AudioClip>(audio_path);
 
-        SoundAssets.Clear();
+        AudioAssetPool.Clear();
 
         AudioAsset sndAsset;
 
@@ -877,13 +1084,13 @@ public class AudioManager : MonoBehaviour
         {
             sndAsset.Name = clips[i].name;
             sndAsset.Clip = clips[i];
-            SoundAssets.Add(sndAsset);
+            AudioAssetPool.Add(sndAsset);
         }
     }
 
-    public static AudioClip GetClipFromAsset(string clip_name)
+    public static AudioClip GetClipFromAssetList(string clip_name)
     {
-        foreach (AudioAsset sndAsset in SoundAssets)
+        foreach (AudioAsset sndAsset in AudioAssetPool)
         {
             if (clip_name == sndAsset.Name)
             {

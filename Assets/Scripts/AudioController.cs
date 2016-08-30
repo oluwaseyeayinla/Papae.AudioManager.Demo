@@ -1,36 +1,54 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEngine.Audio;
 
-[System.Serializable]
+// The regulator of all things with regards to audio
+[Serializable]
 public class AudioController : MonoBehaviour
 {
-    // default or starting volume of the background music
+    /// <summary>
+    /// Default volume of the background music
+    /// </summary>
     public static readonly float DefaultMusicVol = 0.12f;
-    // default or starting volume of the sound effects
+    /// <summary>
+    /// Default volume of the sound effects
+    /// </summary>
     public static readonly float DefaultSFxVol = 1.0f;
 
     /// <summary>
-    /// if none is to be used, then leave unassigned or blank
+    /// The target group for the background music to route its their signals
     /// </summary>
-    public AudioMixer MasterMixer;
+    [Tooltip("if none is to be used, then leave unassigned or blank")]
+    public AudioMixerGroup MusicMixerGroup;
 
-    /// true if the music is enabled	
+    /// <summary>
+    /// The target group for the sound effects to route its their signals
+    /// </summary>
+    [Tooltip("if none is to be used, then leave unassigned or blank")]
+    public AudioMixerGroup SoundFxMixerGroup;
+
+    /// <summary>
+    /// Is the background music mute
+    /// </summary>	
     public bool MusicOn = true;
-    /// true if the sound fx are enabled
+
+    /// <summary>
+    /// Is the sound fx mute
+    /// </summary>
     public bool SoundFxOn = true;
 
-    /// the music volume
+
+    /// <summary>
+    /// The background music volume
+    /// </summary>
     [Range(0, 1)]
     public float MusicVolume = DefaultMusicVol;
-    /// the sound fx volume
+
+    /// <summary>
+    /// The sound fx volume
+    /// </summary>
     [Range(0, 1)]
     public float SoundFxVolume = DefaultSFxVol;
-
-    /// true if both SoundFxOn and MusicOn are false
-    public bool IsMute
-    {
-        get { return !MusicOn && !SoundFxOn; }
-    }
 }
 
 public class SoundEFfectTag : MonoBehaviour
@@ -45,39 +63,27 @@ public enum MusicTransition
     CrossFade
 }
 
-[System.Serializable]
-public struct AbstractAudioSnapshot
+[Serializable]
+public struct AudioAsset
 {
     public string Name;
-    public AudioMixerSnapshot SnapShot;
+    public AudioClip Clip;
 }
 
-[System.Serializable]
-public struct AbstractBackgroundMusic
+[Serializable]
+public struct BackgroundMusic
 {
     public AudioClip CurrentClip;
     public AudioClip NextClip;
     public MusicTransition Transition;
 }
 
-[System.Serializable]
-public struct AbstractLoopingSoundAsset
+[Serializable]
+public struct RepeatSound
 {
     public string Name;
-    public AudioClip Clip;
+    public AudioSource Source;
     public float Duration;
-
-    public AbstractLoopingSoundAsset(string name, AudioClip clip, float duration)
-    {
-        Name = name;
-        Clip = clip;
-        Duration = duration;
-    }
+    public Action Callback;
 }
 
-[System.Serializable]
-public struct AudioAsset
-{
-    public string Name;
-    public AudioClip Clip;
-}

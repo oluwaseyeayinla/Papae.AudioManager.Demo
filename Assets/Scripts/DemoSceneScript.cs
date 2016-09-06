@@ -14,19 +14,27 @@ public class DemoSceneScript : MonoBehaviour
     public Slider CallbackSlider;
 
 
-    AudioSource repeatSource = null, callbackSource = null;
-    float totalTime, repeatAmount;
+    // reference to the audiosource for the repeat clip
+    AudioSource repeatSource = null;
+    // reference to the aaudiosource for the callback clip
+    AudioSource callbackSource = null;
+    // total time for the repat sound
+    float totalTime;
+    // pool index where repeat information is stored
     int repeatIndex;
 
 
     void Start()
     {
+        // retrieve the first background music and play it
         AudioClip clip = AudioManager.GetClipFromAssetList("BGMusic1");
         AudioManager.PlayBGM(clip, MusicTransition.Swift);
 
+        // set the default values for the controller properties 
         MusicSlider.value = AudioManager.Controller.MusicVolume;
         SoundFxSlider.value = AudioManager.Controller.SoundFxVolume;
 
+        // set the default calues for the effects properties
         RepeatSlider.value = 0;
         RepeatText.text = "x" + 0;
         CallbackSlider.value = 0;
@@ -34,16 +42,27 @@ public class DemoSceneScript : MonoBehaviour
 
     void LateUpdate()
     {
+        // update the volume of the sliders | this also helps if you change the volume from the controller or mixer
         MusicSlider.value = AudioManager.Controller.MusicVolume;
         SoundFxSlider.value = AudioManager.Controller.SoundFxVolume;
 
+        // update the sider properties if the repeat sound source exists
         if (repeatSource != null)
         {
+            // get index where repeat sound is stored
             repeatIndex = AudioManager.GetRepeatingSoundIndex(AudioManager.GetClipFromAssetList("TickTock").name);
-            RepeatSlider.value = (AudioManager.RepeatSoundPool[repeatIndex].Duration/ totalTime) * 1;
-            RepeatText.text = "x" + (Mathf.RoundToInt((AudioManager.RepeatSoundPool[repeatIndex].Duration / repeatSource.clip.length)));
+
+            // update value if repeat sound exists
+            if (repeatIndex >= 0)
+            {
+                // remainder of duration left
+                RepeatSlider.value = (AudioManager.RepeatSoundPool[repeatIndex].Duration / totalTime) * 1;
+                // remainder of repeats left
+                RepeatText.text = "x" + (Mathf.RoundToInt((AudioManager.RepeatSoundPool[repeatIndex].Duration / repeatSource.clip.length)));
+            }
         }
 
+        // update the sider properties if the callback sound source exists
         if (callbackSource != null)
         {
             //Debug.Log("Playback Pos: " + callbackSource.time);
@@ -62,6 +81,7 @@ public class DemoSceneScript : MonoBehaviour
         AudioManager.SetSFxVolume(value);
     }
 
+    // gets the next background clip based on the current one
     AudioClip GetNextBackgroundMusicClip()
     {
         if (AudioManager.BGM.CurrentClip == AudioManager.GetClipFromAssetList("BGMusic1"))
@@ -72,39 +92,41 @@ public class DemoSceneScript : MonoBehaviour
         return AudioManager.GetClipFromAssetList("BGMusic1");
     } 
 
+    // swift button function
     public void SwitchBackgroundMusicUsingSwiftTransition()
     {
         AudioClip clip = GetNextBackgroundMusicClip();
-        Debug.Log("Clip Name: " + clip.name);
         AudioManager.PlayBGM(clip, MusicTransition.Swift);
     }
 
+    // fade button function
     public void SwitchBackgroundMusicUsingFadeTransition()
     {
         AudioClip clip = GetNextBackgroundMusicClip();
-        Debug.Log("Clip Name: " + clip.name);
         AudioManager.PlayBGM(clip, MusicTransition.FadeOutFadeIn);
     }
 
+    // crossfade button function
     public void SwitchBackgroundMusicUsingCrossfadeTransition()
     {
         AudioClip clip = GetNextBackgroundMusicClip();
-        Debug.Log("Clip Name: " + clip.name);
         AudioManager.PlayBGM(clip, MusicTransition.CrossFade);
     }
 
+    // one shot button function
     public void PlayOneShotSoundEffect()
     {
         AudioManager.PlayOneShot(AudioManager.GetClipFromAssetList("OneShot"));
     }
 
+    // repeat button function
     public void PlayRepeatSoundEffect(int amount)
     {
-        repeatAmount = amount;
         repeatSource = AudioManager.PlaySFX(AudioManager.GetClipFromAssetList("TickTock"), amount);
         totalTime = repeatSource.clip.length * amount;
     }
 
+    // callback button function
     public void PlayCallbackSoundEffect()
     {
         callbackSource = AudioManager.PlayOneShot(AudioManager.GetClipFromAssetList("Callback1"), CallbackFunction);

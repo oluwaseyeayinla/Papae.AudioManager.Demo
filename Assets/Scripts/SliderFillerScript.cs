@@ -2,26 +2,29 @@
 using UnityEngine.UI;
 
 [ExecuteInEditMode]
-public class SliderFillerScript : MonoBehaviour {
-
-    public float hidder;
+public class SliderFillerScript : MonoBehaviour
+{
+    public float threshold;
+    
     Slider slider;
     GameObject filler;
-    float sliderValue = 0;
+    float sliderValue = 0.012f;
     bool changed = false;
 
 	// Use this for initialization
 	void Start ()
     {
+        // retrieve attached slider component
         slider = GetComponent<Slider>();
-        if (sliderValue <= 0.015f)
+
+        // show a filled or empty bar based on threshold
+        filler = slider.fillRect.gameObject;
+        if (sliderValue <= threshold)
         {
-            filler = slider.fillRect.gameObject;
             filler.SetActive(false);
         }
         else
         {
-            filler = slider.fillRect.gameObject;
             filler.SetActive(true);
         }
     }
@@ -29,27 +32,30 @@ public class SliderFillerScript : MonoBehaviour {
 	// Update is called once per frame
 	void Update ()
     {
+        // retrieve attached slider component
         if (slider == null)
         {
             slider = GetComponent<Slider>();
         }
         
+        // record if an update has occured on the slider
         if (slider.value != sliderValue)
         {
             sliderValue = slider.value;
             changed = true;
         }
 
+        // update the neccesarry changes
         if (changed)
         {
-            if (sliderValue <= hidder)
+            filler = slider.fillRect.gameObject;
+
+            if (sliderValue <= threshold)
             {
-                filler = slider.fillRect.gameObject;
                 filler.SetActive(false);
             }
             else
             {
-                filler = slider.fillRect.gameObject;
                 filler.SetActive(true);
             }
 

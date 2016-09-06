@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Audio;
 
 
 [RequireComponent(typeof(AudioController))]
@@ -29,12 +28,19 @@ public class AudioManager : MonoBehaviour
                 if (instance == null)
                 {
                     // create new one
-                    lock (gameObjectLock)
+                    lock (key)
                     {
-                        gameObjectLock = new GameObject("AudioManager");
-                        gameObjectLock.hideFlags = HideFlags.NotEditable;
+                        gameobjectInstance = new GameObject("AudioManager");
+                        Debug.Log("AudioManager Created!");
+                        gameobjectInstance.hideFlags = HideFlags.None;
+
                         // add the component to the gameobject
-                        gameObjectLock.AddComponent<AudioManager>();
+                        gameobjectInstance.AddComponent<AudioManager>();
+                        // set the default properties of the controller
+                        gameobjectInstance.GetComponent<AudioController>().MusicOn = LoadBGMOn();
+                        gameobjectInstance.GetComponent<AudioController>().MusicVolume = LoadBGMVolume();
+                        gameobjectInstance.GetComponent<AudioController>().SoundFxOn = LoadSFxOn();
+                        gameobjectInstance.GetComponent<AudioController>().SoundFxVolume = LoadSFxVolume();
                     }
                 }
             }
@@ -45,9 +51,11 @@ public class AudioManager : MonoBehaviour
 
     // singleton placeholder
     private static AudioManager instance;
-    private static GameObject gameObjectLock;
+    private static GameObject gameobjectInstance;
+    private static object key = new object();
     // application has started and is running
     private static bool alive = true;
+
 
     void OnApplicationExit()
     {
@@ -114,7 +122,6 @@ public class AudioManager : MonoBehaviour
 
     void OnDestroy()
     {
-        Debug.Log("OnDestroy");
         isActive = false;
         StopAllCoroutines();
         SavePreferences();
@@ -123,10 +130,19 @@ public class AudioManager : MonoBehaviour
     // initialise the audio manager
     void OnAwake()
     {
-        Debug.Log("AudioManager On Awake");
-        audioController = GetComponent<AudioController>();
+        Debug.Log("AudioManager OnAwake");
         repeatingSounds.Clear();
+        LoadControllerSettings();
         SetupMusicAudioSource();
+    }
+
+    void LoadControllerSettings()
+    {
+        audioController = GetComponent<AudioController>();
+        audioController.MusicOn = LoadBGMOn();
+        audioController.MusicVolume = LoadBGMVolume();
+        audioController.SoundFxOn = LoadSFxOn();
+        audioController.SoundFxVolume = LoadSFxVolume();
     }
 
     // initialises the audio source used by the background music
@@ -174,21 +190,21 @@ public class AudioManager : MonoBehaviour
         }
     }
 
-    // this is here because the mixer group float can't be set awake
-    // spent amost 4 hours trying to figure out why... well didn't know until i ran some tests 
+    
     void OnStart()
     {
-        audioController.MusicOn = LoadBGMStatus();
         musicSource.mute = !audioController.MusicOn;
         SetBGMVolume(LoadBGMVolume());
 
-        sfxOn = audioController.SoundFxOn = LoadSFxStatus();
+        sfxOn = audioController.SoundFxOn;
         SetSFxVolume(LoadSFxVolume());
 
         SavePreferences();
 
         if (!isActive)
         {
+            // this is here because the mixer group float can't be set on awake
+            // spent amost 4 hours trying to figure out why... well didn't know until i ran some tests 
             StartCoroutine(OnUpdate());
         }
 
@@ -766,6 +782,7 @@ public class AudioManager : MonoBehaviour
     public static void PauseAllSFX()
     {
         AudioSource source;
+        // loop through all sound effects with the SoundEffectTag and update their properties
         foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
         {
             source = t.GetComponent<AudioSource>();
@@ -780,6 +797,7 @@ public class AudioManager : MonoBehaviour
     public static void ResumeAllSFX()
     {
         AudioSource source;
+        // loop through all sound effects with the SoundEffectTag and update their properties
         foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
         {
             source = t.GetComponent<AudioSource>();
@@ -839,7 +857,9 @@ public class AudioManager : MonoBehaviour
     /// Loads an AudioClip from the Resources folder
     /// </summary>
     /// <param name="name">Name of your audio clip.</param>
-    public static AudioClip LoadClipFromResource(string name)
+    /// <param name="save_to_pool">Option to save loaded clip into pool for future reference.</param>
+    /// <returns>The audioclip from the resource folder </returns>
+    public static AudioClip LoadClipFromResource(string name, bool save_to_pool)
     {
         AudioClip clip = Resources.Load(name) as AudioClip;
         if (clip == null)
@@ -849,7 +869,22 @@ public class AudioManager : MonoBehaviour
             return null;
         }
 
+        if (save_to_pool)
+        {
+            AddToAssetList(clip);
+        }
+
         return clip;
+    }
+
+    /// <summary>
+    /// Loads an AudioClip from the Resources folder
+    /// </summary>
+    /// <param name="name">Name of your audio clip.</param>
+    /// /// <returns>The audioclip from the resource folder </returns>
+    public static AudioClip LoadClipFromResource(string name)
+    {
+        return LoadClipFromResource(name, false);
     }
 
 
@@ -883,31 +918,32 @@ public class AudioManager : MonoBehaviour
         return PlayOneShotFromResource(name, null);
     }
 
-    
+
     /// <summary>
     /// Toggles the Background Music mute.
     /// </summary>
-    public static void ToggleBGMMute()
+    /// <param name="flag">New toggle state of the background music controller.</param>
+    public static void ToggleBGMMute(bool flag)
     {
-        Instance.audioController.MusicOn = !Controller.MusicOn;
-        musicSource.mute = !Controller.MusicOn;
+        Instance.audioController.MusicOn = flag;
+        musicSource.mute = !Instance.audioController.MusicOn;
     }
 
     /// <summary>
     /// Toggles the Sound Effect mute.
     /// </summary>
-    public static void ToggleSFXMute()
+    /// <param name="flag">New toggle state of the sound effect controller.</param>
+    public static void ToggleSFXMute(bool flag)
     {
-        Instance.audioController.SoundFxOn = !Controller.SoundFxOn;
+        Instance.audioController.SoundFxOn = flag;
 
         AudioSource source;
-        //foreach (GameObject g in GameObject.FindGameObjectsWithTag(DefaultSFXTag))
-        foreach (SoundEFfectTag t in GameObject.FindObjectsOfType<SoundEFfectTag>())
+        // loop through all sound effects with the SoundEffectTag and update their properties
+        foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
         {
-            //source = g.GetComponent<AudioSource>();
             source = t.GetComponent<AudioSource>();
             source.volume = sfxVol;
-            source.mute = !Controller.SoundFxOn;
+            source.mute = !Instance.audioController.SoundFxOn;
         }
 
         sfxOn = Controller.SoundFxOn;
@@ -916,28 +952,22 @@ public class AudioManager : MonoBehaviour
     /// <summary>
     /// Toggles the Mater Volume that controls both Background Music & Sound Effect mute.
     /// </summary>
-    public static void ToggleMute()
+    /// <param name="flag">New toggle state of the mute controller.</param>
+    public static void ToggleMute(bool flag)
     {
-        ToggleBGMMute();
-        ToggleSFXMute();
+        ToggleBGMMute(flag);
+        ToggleSFXMute(flag);
     }
 
     /// <summary>
-    /// Sets and saves the background music volume.
+    /// Sets the background music volume.
     /// </summary>
     /// <param name="volume">New volume of the background music.</param>
     public static void SetBGMVolume(float volume)
     {
         if (Controller == null) return;
 
-        //if (musicSource == null)
-        //{
-            //Instance.audioController = Instance.GetComponent<AudioController>();
-            //musicSource = Instance.GetComponent<AudioSource>() == null ? Instance.AttachAudioSource() : Instance.GetComponent<AudioSource>();
-            //Instance.OnStart();
-        //}
-
-        // make it a range from 0 to 1 to suit the music source volume and audiomanager volume
+        // make it a range from 0 to 1 to suit the audio controller
         volume = Mathf.Clamp01(volume);
         // assign vol to all music volume variables
         musicSource.volume = musicVol = Controller.MusicVolume = volume;
@@ -949,22 +979,22 @@ public class AudioManager : MonoBehaviour
             // set the volume of the background music group
             Controller.MusicMixerGroup.audioMixer.SetFloat(BackgroundMusicVolKey, mixerVol);
         }
-
-        SaveBGMPreferences();
     }
 
     /// <summary>
-    /// Sets and saves the sound effect volume.
+    /// Sets the sound effect volume.
     /// </summary>
     /// <param name="volume">New volume of all sound effects.</param>
     public static void SetSFxVolume(float volume)
     {
         if (Controller == null) return;
 
+        // make it a range from 0 to 1 to suit the audio controller
         volume = Mathf.Clamp01(volume);
         sfxVol = Controller.SoundFxVolume = volume;
 
         AudioSource source;
+        // loop through all sound effects with the SoundEffectTag and update their properties
         foreach (SoundEFfectTag t in FindObjectsOfType<SoundEFfectTag>())
         {
             source = t.GetComponent<AudioSource>();
@@ -980,8 +1010,6 @@ public class AudioManager : MonoBehaviour
             // set the volume of the sound effect group
             Controller.SoundFxMixerGroup.audioMixer.SetFloat(SoundEffectsVolKey, mixerVol);
         }
-
-        SaveSFXPreferences();
     }
 
     // Self explanatory
@@ -1003,30 +1031,31 @@ public class AudioManager : MonoBehaviour
     // Self explanatory
     static float LoadBGMVolume()
     {
-        return (PlayerPrefs.HasKey(BackgroundMusicVolKey)) ? PlayerPrefs.GetFloat(BackgroundMusicVolKey) : AudioController.DefaultMusicVol;
+        return PlayerPrefs.HasKey(BackgroundMusicVolKey) ? PlayerPrefs.GetFloat(BackgroundMusicVolKey) : AudioController.DefaultMusicVol;
     }
 
     // Self explanatory
     static float LoadSFxVolume()
     {
-        return (PlayerPrefs.HasKey(SoundEffectsVolKey)) ? PlayerPrefs.GetFloat(SoundEffectsVolKey) : AudioController.DefaultSFxVol;
+        return PlayerPrefs.HasKey(SoundEffectsVolKey) ? PlayerPrefs.GetFloat(SoundEffectsVolKey) : AudioController.DefaultSFxVol;
     }
 
+    // converts the integer value to a representative boolean value
     static bool ToBool(int integer)
     {
         return integer == 0 ? false : true;
     }
 
     // Self explanatory
-    static bool LoadBGMStatus()
+    static bool LoadBGMOn()
     {
-        return (PlayerPrefs.HasKey(BackgroundMusicStatusKey)) ? ToBool(PlayerPrefs.GetInt(BackgroundMusicStatusKey)) : Controller.MusicOn;
+        return PlayerPrefs.HasKey(BackgroundMusicStatusKey) ? ToBool(PlayerPrefs.GetInt(BackgroundMusicStatusKey)) : Controller.MusicOn;
     }
 
     // Self explanatory
-    static bool LoadSFxStatus()
+    static bool LoadSFxOn()
     {
-        return (PlayerPrefs.HasKey(SoundEffectsStatusKey)) ? ToBool(PlayerPrefs.GetInt(SoundEffectsStatusKey)) : Controller.SoundFxOn;
+        return PlayerPrefs.HasKey(SoundEffectsStatusKey) ? ToBool(PlayerPrefs.GetInt(SoundEffectsStatusKey)) : Controller.SoundFxOn;
     }
 
     // Self explanatory
@@ -1055,21 +1084,16 @@ public class AudioManager : MonoBehaviour
         AudioAssetPool.Clear();
     }
 
-    public static void AddToAssetList(string audio_path)
+    public static void AddToAssetList(AudioClip clip)
     {
-        AudioClip clip = Resources.Load<AudioClip>(audio_path);
-
-        if (clip == null)
+        if (clip)
         {
-            Debug.LogError("Could not find specified Clip at path '" + audio_path + "'");
-            return;
-        }
+            AudioAsset sndAsset;
+            sndAsset.Name = clip.name;
+            sndAsset.Clip = clip;
 
-        AudioAsset sndAsset;
-        sndAsset.Name = clip.name;
-        sndAsset.Clip = clip;
-
-        AudioAssetPool.Add(sndAsset);
+            AudioAssetPool.Add(sndAsset);
+        } 
     }
 
     public static void LoadSoundsIntoAssetList(string audio_path)
@@ -1088,6 +1112,11 @@ public class AudioManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Gets the AudioClip reference from the name supplied. If no matching name can be found then null is returned. 
+    /// </summary>
+    /// <param name="clip_name">The name of the clip in the asset list pool </param>
+    /// <returns>The AudioClip from the pool or null if name could not be found</returns>
     public static AudioClip GetClipFromAssetList(string clip_name)
     {
         foreach (AudioAsset sndAsset in AudioAssetPool)

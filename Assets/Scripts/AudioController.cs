@@ -51,6 +51,7 @@ public class AudioController : MonoBehaviour
     public float SoundFxVolume = DefaultSFxVol;
 }
 
+// this is simply my way of not using tags. I find that adding a lot of then can be daunting
 public class SoundEFfectTag : MonoBehaviour
 {
 

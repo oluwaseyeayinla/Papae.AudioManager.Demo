@@ -27,7 +27,7 @@ public class DemoSceneScript : MonoBehaviour
     void Start()
     {
         // retrieve the first background music and play it
-        AudioClip clip = AudioManager.GetClipFromAssetList("BGMusic1");
+        AudioClip clip = AudioManager.GetClipFromAssetList("MenuMusic");
         AudioManager.PlayBGM(clip, MusicTransition.Swift);
 
         // set the default values for the controller properties 
@@ -84,12 +84,12 @@ public class DemoSceneScript : MonoBehaviour
     // gets the next background clip based on the current one
     AudioClip GetNextBackgroundMusicClip()
     {
-        if (AudioManager.BGM.CurrentClip == AudioManager.GetClipFromAssetList("BGMusic1"))
+        if (AudioManager.BGM.CurrentClip == AudioManager.GetClipFromAssetList("MenuMusic"))
         {
-            return AudioManager.GetClipFromAssetList("BGMusic2");
+            return AudioManager.GetClipFromAssetList("GameMusic");
         }
 
-        return AudioManager.GetClipFromAssetList("BGMusic1");
+        return AudioManager.GetClipFromAssetList("MenuMusic");
     } 
 
     // swift button function

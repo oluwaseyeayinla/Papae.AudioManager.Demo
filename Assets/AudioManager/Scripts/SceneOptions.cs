@@ -41,11 +41,11 @@ public class SceneOptions : MonoBehaviour
         {
             // load the title music from the resources folder using AudioManager
             case "MenuScene":
-                clip = AudioManager.LoadClipFromResource("BGMusic1");
+                clip = AudioManager.LoadClipFromResource("MenuMusic");
                 break;
             // load the game music from the resources folder using AudioManager
             case "GameScene":
-                clip = AudioManager.LoadClipFromResource("BGMusic2");
+                clip = AudioManager.LoadClipFromResource("GameMusic");
                 break;
         }
 
@@ -68,7 +68,7 @@ public class SceneOptions : MonoBehaviour
     void LoadGame()
     {
         // fade out current music and fade in next music in 1s
-        AudioManager.PlayBGMFromResource("BGMusic2", MusicTransition.FadeOutFadeIn);
+        AudioManager.PlayBGMFromResource("GameMusic", MusicTransition.FadeOutFadeIn);
         
         // disable interaction with the main menu UI
         panelOptions.DisableMainMenu();
@@ -88,7 +88,7 @@ public class SceneOptions : MonoBehaviour
     void LoadMainMenu()
     {
         // fade out current music and fade in next music in 1s
-        AudioManager.PlayBGMFromResource("BGMusic1", MusicTransition.FadeOutFadeIn);
+        AudioManager.PlayBGMFromResource("MenuMusic", MusicTransition.FadeOutFadeIn);
 
         // disable interaction with the pause menu UI
         panelOptions.DisablePauseMenu();

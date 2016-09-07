@@ -9,7 +9,7 @@ public class AudioController : MonoBehaviour
     /// <summary>
     /// Default volume of the background music
     /// </summary>
-    public static readonly float DefaultMusicVol = 0.12f;
+    public static readonly float DefaultMusicVol = 0.70f;
     /// <summary>
     /// Default volume of the sound effects
     /// </summary>

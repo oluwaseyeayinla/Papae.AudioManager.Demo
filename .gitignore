@@ -1,9 +1,8 @@
-/3rd Party/
-/[Bb]uild/
-/[Bb]uilds/
+/[Bb]inaries/
 /[Ll]ibrary/
 /[Oo]bj/
 /[Tt]emp/
+/ThirdParty*/*
 
 
 *.csproj

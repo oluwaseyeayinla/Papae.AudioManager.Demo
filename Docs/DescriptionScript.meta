@@ -1,0 +1,34 @@
+Audio Manager is a simple way to manage and control your 2D game’s background music and sound effects.
+<br>
+<br>
+<strong>Features</strong>
+-	An audio manager component in inspector view 
+<br>
+-	Persistent singleton class call from code (no prefabs needed)
+<br>
+-	Static function calls with callbacks 
+<br>
+-	3 music transition effects (Swift, Linear Fade & Cross Fade)
+<br>
+-	Control of all sound effects in game without tags
+<br>
+-	Integration with AudioMixerGroups
+<br>
+-	Built-in sound pool for looping or repeating sounds
+<br>
+-	Pool for loading audio assets from resource folder
+<br>
+-	Fully commented code for understanding
+<br>
+-	2 demo scenes to play test
+<br>
+<br>
+
+<a href = "https://github.com/oluwaseyeayinla/AudioManager-Papae2D.AudioEngine-/blob/master/README.md">Documentation</a>
+
+<a href = "https://oluwaseyeayinla.github.io/papae2d/audio_engine/audio_manager/api_reference/html/annotated.html">API Reference</a>
+
+
+For enquiries, bug reports or suggestions contact oluwaseyeayinla@gmail.com 
+
+Like us on <a href = "">Facebook</a>

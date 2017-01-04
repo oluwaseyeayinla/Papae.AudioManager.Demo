@@ -2,7 +2,8 @@
 /[Ll]ibrary/
 /[Oo]bj/
 /[Tt]emp/
-/ThirdParty*/*
+/Assets/ThirdParty*/*
+/Assets/AssetsStoreTools*/*
 
 
 *.csproj

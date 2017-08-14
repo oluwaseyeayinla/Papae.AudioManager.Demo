@@ -2,9 +2,11 @@
 /[Ll]ibrary/
 /[Oo]bj/
 /[Tt]emp/
-/Assets/ThirdParty*/*
-/Assets/AssetsStoreTools*/*
-
+/Assets/AssetStoreTools*/*
+/Assets/ThirdPaty*/*
+/Promotional Images*/*
+/Screenshots*/*
+/Docs/Documentation*/*
 
 *.csproj
 *.unityproj

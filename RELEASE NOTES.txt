@@ -1,0 +1,7 @@
+Version 1.0.1
+
+Bug Fixes
+Fixed the hangging issue when trying to perform another transition effect on one that is currently performing
+
+Features
+Added a no music is being played property: meaning you can check if a current background music is being played 
